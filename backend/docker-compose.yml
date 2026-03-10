@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: ryuji-api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://ryuji:ryujipass@db:5432/ryuji
+      - SECRET_KEY=${SECRET_KEY:-change_me_in_production}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CREATOR_USERNAME=${CREATOR_USERNAME:-neporrex}
+      - CREATOR_EMAIL=${CREATOR_EMAIL:-neporrex@ryuji.ai}
+      - CREATOR_PASSWORD=${CREATOR_PASSWORD}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+      - DEV_MODE=false
+      - WORKERS=2
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    networks:
+      - ryuji-net
+
+  db:
+    image: postgres:16-alpine
+    container_name: ryuji-db
+    restart: always
+    environment:
+      POSTGRES_USER: ryuji
+      POSTGRES_PASSWORD: ryujipass
+      POSTGRES_DB: ryuji
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ryuji"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ryuji-net
+
+volumes:
+  pgdata:
+
+networks:
+  ryuji-net:
+    driver: bridge
