@@ -1,8 +1,5 @@
 import Cookies from "js-cookie";
-import type {
-  TokenResponse, User, ChatResponse,
-  Conversation, Message, AdminStats
-} from "@/types";
+import type { TokenResponse, User, ChatResponse, Conversation, Message, AdminStats } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -10,48 +7,42 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export const getToken = (): string | undefined => Cookies.get("ryuji_token");
 
-export const setToken = (token: string, role: string, username: string) => {
+export const setToken = (token: string, role: string, username: string, plan = "free") => {
   Cookies.set("ryuji_token", token, { expires: 7, sameSite: "strict" });
   Cookies.set("ryuji_role", role, { expires: 7, sameSite: "strict" });
   Cookies.set("ryuji_user", username, { expires: 7, sameSite: "strict" });
+  Cookies.set("ryuji_plan", plan, { expires: 7, sameSite: "strict" });
 };
 
 export const clearToken = () => {
-  Cookies.remove("ryuji_token");
-  Cookies.remove("ryuji_role");
-  Cookies.remove("ryuji_user");
+  ["ryuji_token","ryuji_role","ryuji_user","ryuji_plan"].forEach(k => Cookies.remove(k));
 };
 
 export const getStoredRole = (): string => Cookies.get("ryuji_role") || "guest";
 export const getStoredUsername = (): string => Cookies.get("ryuji_user") || "";
+export const getStoredPlan = (): string => Cookies.get("ryuji_plan") || "free";
+export const getIsPro = (): boolean => {
+  const role = getStoredRole();
+  const plan = getStoredPlan();
+  return plan === "pro" || role === "admin" || role === "creator";
+};
 
 // ── Request helper ────────────────────────────────────────────────────────────
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  auth = true,
-): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, auth = true): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string> || {}),
   };
-
   if (auth) {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
-
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
-
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
     throw new Error(err.detail || `HTTP ${res.status}`);
   }
-
   return res.json();
 }
 
@@ -59,38 +50,23 @@ async function request<T>(
 
 export const authApi = {
   signup: (username: string, email: string, password: string): Promise<TokenResponse> =>
-    request("/auth/signup", {
-      method: "POST",
-      body: JSON.stringify({ username, email, password }),
-    }, false),
+    request("/auth/signup", { method: "POST", body: JSON.stringify({ username, email, password }) }, false),
 
   login: (username: string, password: string): Promise<TokenResponse> =>
-    request("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }, false),
+    request("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }, false),
 
   me: (): Promise<User> => request("/auth/me"),
 
-  limits: () => request<{
-    role: string;
-    daily_limit: number;
-    used_today: number;
-    remaining: number;
-  }>("/auth/limits"),
+  limits: () => request<{ plan: string; is_pro: boolean; daily_limit: number | null; used_today: number; remaining: number | null }>("/auth/limits"),
 };
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export const chatApi = {
   sendMessage: (message: string, conversation_id?: string): Promise<ChatResponse> =>
-    request("/api/chat", {
-      method: "POST",
-      body: JSON.stringify({ message, conversation_id }),
-    }),
+    request("/api/chat", { method: "POST", body: JSON.stringify({ message, conversation_id }) }),
 
-  getConversations: (): Promise<Conversation[]> =>
-    request("/api/conversations"),
+  getConversations: (): Promise<Conversation[]> => request("/api/conversations"),
 
   getMessages: (conversationId: string): Promise<Message[]> =>
     request(`/api/conversations/${conversationId}/messages`),
@@ -99,38 +75,35 @@ export const chatApi = {
     request(`/api/conversations/${conversationId}`, { method: "DELETE" }),
 };
 
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+export const billingApi = {
+  checkout: (): Promise<{ url: string }> =>
+    request("/billing/checkout", { method: "POST" }),
+
+  portal: (): Promise<{ url: string }> =>
+    request("/billing/portal", { method: "POST" }),
+};
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export const adminApi = {
-  getStats: (): Promise<AdminStats> =>
-    request("/admin/stats"),
+  getStats: (): Promise<AdminStats> => request("/admin/stats"),
 
   getUsers: (skip = 0, limit = 50): Promise<User[]> =>
     request(`/admin/users?skip=${skip}&limit=${limit}`),
 
   banUser: (user_id: string, reason?: string): Promise<void> =>
-    request("/admin/users/ban", {
-      method: "POST",
-      body: JSON.stringify({ user_id, reason }),
-    }),
+    request("/admin/users/ban", { method: "POST", body: JSON.stringify({ user_id, reason }) }),
 
   unbanUser: (user_id: string): Promise<void> =>
-    request("/admin/users/unban", {
-      method: "POST",
-      body: JSON.stringify({ user_id }),
-    }),
+    request("/admin/users/unban", { method: "POST", body: JSON.stringify({ user_id }) }),
 
   updateRole: (user_id: string, role: string): Promise<void> =>
-    request("/admin/users/role", {
-      method: "POST",
-      body: JSON.stringify({ user_id, role }),
-    }),
+    request("/admin/users/role", { method: "POST", body: JSON.stringify({ user_id, role }) }),
 
   getSettings: () => request<Array<{ key: string; value: string; description: string }>>("/admin/settings"),
 
   updateSetting: (key: string, value: string, description?: string): Promise<void> =>
-    request("/admin/settings", {
-      method: "PUT",
-      body: JSON.stringify({ key, value, description }),
-    }),
+    request("/admin/settings", { method: "PUT", body: JSON.stringify({ key, value, description }) }),
 };
