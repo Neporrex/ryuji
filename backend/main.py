@@ -1,7 +1,3 @@
-"""
-Ryuji — FastAPI Backend
-Created and configured by neporrex
-"""
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -12,6 +8,7 @@ from database import create_tables
 from routers.auth_router import router as auth_router
 from routers.chat_router import router as chat_router
 from routers.admin_router import router as admin_router
+from routers.stripe_router import router as stripe_router
 
 load_dotenv()
 
@@ -31,31 +28,26 @@ def seed_defaults():
     creator_username = os.getenv("CREATOR_USERNAME", "neporrex")
     creator_email = os.getenv("CREATOR_EMAIL", "neporrex@ryuji.ai")
     creator_password = os.getenv("CREATOR_PASSWORD", "")
-
     if not creator_password:
         return
 
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.username == creator_username).first()
-        if not existing:
-            creator = User(
+        if not db.query(User).filter(User.username == creator_username).first():
+            db.add(User(
                 username=creator_username,
                 email=creator_email,
                 password_hash=hash_password(creator_password),
                 role=UserRole.CREATOR,
-            )
-            db.add(creator)
-
+            ))
         defaults = [
             ("ryuji.model", os.getenv("AI_MODEL", "llama-3.3-70b-versatile"), "AI model"),
             ("ryuji.version", "1.0.0", "Version"),
-            ("ryuji.tagline", "Sharp mind. Calm presence.", "Tagline"),
+            ("ryuji.pro_price", "9.99", "Pro plan monthly price (USD)"),
         ]
         for key, value, desc in defaults:
             if not db.query(Setting).filter(Setting.key == key).first():
                 db.add(Setting(key=key, value=value, description=desc))
-
         db.commit()
     except Exception as e:
         db.rollback()
@@ -69,16 +61,7 @@ app = FastAPI(
     description="AI assistant backend — created by neporrex",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/docs" if os.getenv("SHOW_DOCS", "true") == "true" else None,
-    redoc_url=None,
 )
-
-# ── CORS — allow all origins (handles any Vercel domain) ──────────────────────
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
-if allowed_origins_env:
-    origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
-else:
-    origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -91,18 +74,13 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(admin_router)
+app.include_router(stripe_router)
 
 
 @app.get("/", tags=["Root"])
 def root():
-    return {"name": "Ryuji API", "version": "1.0.0", "status": "operational", "creator": "neporrex"}
-
+    return {"name": "Ryuji API", "version": "1.0.0", "status": "operational"}
 
 @app.get("/health", tags=["Root"])
 def health():
     return {"status": "healthy"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)
