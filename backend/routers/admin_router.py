@@ -30,6 +30,7 @@ def get_stats(
         total_conversations=db.query(Conversation).count(),
         total_messages=db.query(Message).count(),
         banned_users=db.query(User).filter(User.is_banned == True).count(),
+        pro_users=db.query(User).filter(User.plan == "pro").count(),
     )
 
 
