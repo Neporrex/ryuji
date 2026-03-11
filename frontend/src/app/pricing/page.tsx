@@ -134,7 +134,7 @@ export default function PricingPage() {
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 12, color: "var(--gold)", letterSpacing: "0.08em", marginBottom: 8 }}>PRO</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 4 }}>
-                <span style={{ fontSize: 32, fontWeight: 700, color: "var(--gold-light)" }}>$9.99</span>
+                <span style={{ fontSize: 32, fontWeight: 700, color: "var(--gold-light)" }}>$1.99</span>
                 <span style={{ fontSize: 13, color: "var(--text-3)" }}>/month</span>
               </div>
               <p style={{ fontSize: 13, color: "var(--text-3)" }}>Everything you need, unlimited.</p>
@@ -157,7 +157,7 @@ export default function PricingPage() {
               </button>
             ) : (
               <button onClick={handleUpgrade} disabled={loading} style={{ padding: "11px", background: loading ? "var(--bg-3)" : "var(--gold)", border: "none", borderRadius: 10, color: loading ? "var(--text-3)" : "#0d0d0d", fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "var(--font)", transition: "all 0.15s", boxShadow: "0 0 24px rgba(201,162,39,0.2)" }}>
-                {loading ? "Loading…" : isAuth ? "Upgrade to Pro →" : "Get started →"}
+                {loading ? "Loading…" : isAuth ? "Upgrade to Pro — $1.99/mo →" : "Get started →"}
               </button>
             )}
           </div>
