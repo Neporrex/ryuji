@@ -1,3 +1,6 @@
+"""
+Authentication: JWT, password hashing, role middleware
+"""
 import os
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -17,11 +20,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1008
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+# ── Password ──────────────────────────────────────────────────────────────────
+
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
+
+# ── JWT ───────────────────────────────────────────────────────────────────────
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
@@ -31,6 +38,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
 
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
@@ -68,9 +77,12 @@ def require_creator(user: User = Depends(require_auth)) -> User:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Creator access required")
     return user
 
+# ── Rate limits ───────────────────────────────────────────────────────────────
+
 DAILY_LIMITS = {
-    "free":    20,
-    "pro":     99999,
+    "guest":   10,
+    "free":    20,    # free registered users
+    "pro":     99999, # unlimited
     "admin":   99999,
     "creator": 99999,
 }
