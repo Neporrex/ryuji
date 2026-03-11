@@ -18,15 +18,12 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: create tables, seed defaults."""
     create_tables()
     seed_defaults()
     yield
-    # Cleanup (if needed)
 
 
 def seed_defaults():
-    """Seed the creator account and default settings if they don't exist."""
     from database import SessionLocal
     from models import User, UserRole, Setting
     from auth import hash_password
@@ -36,7 +33,7 @@ def seed_defaults():
     creator_password = os.getenv("CREATOR_PASSWORD", "")
 
     if not creator_password:
-        return  # Don't auto-create without a password
+        return
 
     db = SessionLocal()
     try:
@@ -50,11 +47,10 @@ def seed_defaults():
             )
             db.add(creator)
 
-        # Default settings
         defaults = [
-            ("ryuji.model", os.getenv("AI_MODEL", "claude-sonnet-4-20250514"), "AI model identifier"),
-            ("ryuji.version", "1.0.0", "Current Ryuji version"),
-            ("ryuji.tagline", "Sharp mind. Calm presence.", "Ryuji tagline"),
+            ("ryuji.model", os.getenv("AI_MODEL", "llama-3.3-70b-versatile"), "AI model"),
+            ("ryuji.version", "1.0.0", "Version"),
+            ("ryuji.tagline", "Sharp mind. Calm presence.", "Tagline"),
         ]
         for key, value, desc in defaults:
             if not db.query(Setting).filter(Setting.key == key).first():
@@ -68,13 +64,6 @@ def seed_defaults():
         db.close()
 
 
-# ── Application ───────────────────────────────────────────────────────────────
-
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,https://ryuji.vercel.app"
-).split(",")
-
 app = FastAPI(
     title="Ryuji API",
     description="AI assistant backend — created by neporrex",
@@ -84,15 +73,20 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# ── CORS — allow all origins (handles any Vercel domain) ──────────────────────
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+if allowed_origins_env:
+    origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+else:
+    origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ── Routes ────────────────────────────────────────────────────────────────────
 
 app.include_router(auth_router)
 app.include_router(chat_router)
@@ -101,13 +95,7 @@ app.include_router(admin_router)
 
 @app.get("/", tags=["Root"])
 def root():
-    return {
-        "name": "Ryuji API",
-        "version": "1.0.0",
-        "status": "operational",
-        "creator": "neporrex",
-        "tagline": "Sharp mind. Calm presence.",
-    }
+    return {"name": "Ryuji API", "version": "1.0.0", "status": "operational", "creator": "neporrex"}
 
 
 @app.get("/health", tags=["Root"])
@@ -115,14 +103,6 @@ def health():
     return {"status": "healthy"}
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", "8000")),
-        reload=os.getenv("DEV_MODE", "false") == "true",
-        workers=int(os.getenv("WORKERS", "1")),
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=False)
