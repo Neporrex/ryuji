@@ -22,6 +22,11 @@ class UserRole(str, enum.Enum):
     CREATOR = "creator"
 
 
+class UserPlan(str, enum.Enum):
+    FREE = "free"
+    PRO = "pro"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -30,6 +35,10 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     role = Column(SAEnum(UserRole), default=UserRole.USER, nullable=False)
+    plan = Column(SAEnum(UserPlan), default=UserPlan.FREE, nullable=False)
+    stripe_customer_id = Column(String(255), nullable=True)
+    stripe_subscription_id = Column(String(255), nullable=True)
+    plan_expires_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_banned = Column(Boolean, default=False, nullable=False)
     daily_message_count = Column(Integer, default=0, nullable=False)
@@ -40,8 +49,14 @@ class User(Base):
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<User {self.username} ({self.role})>"
+    @property
+    def is_pro(self) -> bool:
+        if self.role in (UserRole.ADMIN, UserRole.CREATOR):
+            return True
+        if self.plan == UserPlan.PRO:
+            if self.plan_expires_at is None or self.plan_expires_at > datetime.utcnow():
+                return True
+        return False
 
 
 class Session(Base):
@@ -77,7 +92,7 @@ class Message(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     conversation_id = Column(String(36), ForeignKey("conversations.id"), nullable=False)
-    role = Column(String(20), nullable=False)  # "user" or "assistant"
+    role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     token_count = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
