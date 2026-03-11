@@ -92,23 +92,3 @@ def check_and_increment_message_count(user: User, db: Session) -> bool:
     user.daily_message_count += 1
     db.commit()
     return True
-```
-
----
-
-**`backend/requirements.txt`**
-```
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-sqlalchemy==2.0.30
-psycopg2-binary==2.9.9
-alembic==1.13.1
-python-jose[cryptography]==3.3.0
-bcrypt==4.1.3
-python-multipart==0.0.9
-groq==0.9.0
-python-dotenv==1.0.1
-httpx==0.27.0
-pydantic[email]==2.7.1
-slowapi==0.1.9
-stripe==8.9.0
