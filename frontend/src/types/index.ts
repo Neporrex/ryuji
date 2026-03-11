@@ -1,20 +1,16 @@
 export type UserRole = "guest" | "user" | "admin" | "creator";
+export type UserPlan = "free" | "pro";
 
 export interface User {
   id: string;
   username: string;
   email: string;
   role: UserRole;
-  is_banned: boolean;
+  plan: UserPlan;
+  is_pro: boolean;
   is_active: boolean;
+  is_banned: boolean;
   created_at: string;
-}
-
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  role: UserRole;
-  isAuthenticated: boolean;
 }
 
 export interface Message {
@@ -37,6 +33,7 @@ export interface ChatResponse {
   reply: string;
   conversation_id: string;
   message_id: string;
+  remaining_messages?: number;
 }
 
 export interface TokenResponse {
@@ -44,6 +41,8 @@ export interface TokenResponse {
   token_type: string;
   role: UserRole;
   username: string;
+  plan: UserPlan;
+  is_pro: boolean;
 }
 
 export interface AdminStats {
@@ -52,4 +51,5 @@ export interface AdminStats {
   total_conversations: number;
   total_messages: number;
   banned_users: number;
+  pro_users: number;
 }
