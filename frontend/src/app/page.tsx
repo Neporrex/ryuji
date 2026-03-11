@@ -12,8 +12,41 @@ import {
   Copy, Check, ThumbsUp, ThumbsDown, RefreshCw,
   Eye, EyeOff, UserPlus, LogIn
 } from "lucide-react";
-import { getToken, getStoredRole, getStoredUsername, authApi, chatApi, clearToken } from "@/lib/api";
+import { getToken, getStoredRole, getStoredUsername, getIsPro, getStoredPlan, authApi, chatApi, billingApi, clearToken, setToken } from "@/lib/api";
 import type { UserRole, Message, Conversation } from "@/types";
+
+function UpgradeWall({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const upgrade = async () => {
+    setLoading(true);
+    try { const { url } = await billingApi.checkout(); window.location.href = url; }
+    catch { window.location.href = "/pricing"; }
+    finally { setLoading(false); }
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }} onClick={onClose} />
+      <div style={{ position: "relative", background: "var(--bg-2)", border: "1px solid rgba(201,162,39,0.25)", borderRadius: 20, padding: "36px 32px", maxWidth: 400, width: "100%", textAlign: "center", boxShadow: "0 0 60px rgba(201,162,39,0.08)", animation: "in 0.25s ease" }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--gold-dim)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+          <Zap size={20} style={{ color: "var(--gold)" }} />
+        </div>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: "var(--text-1)" }}>Daily limit reached</h2>
+        <p style={{ fontSize: 14, color: "var(--text-3)", marginBottom: 24, lineHeight: 1.6 }}>
+          You've used all your free messages for today.<br />Upgrade to Pro for unlimited access.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <button onClick={upgrade} disabled={loading} style={{ padding: "11px", background: "var(--gold)", border: "none", borderRadius: 10, color: "#0d0d0d", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)", boxShadow: "0 0 20px rgba(201,162,39,0.2)" }}>
+            {loading ? "Loading…" : "Upgrade to Pro — $9.99/mo"}
+          </button>
+          <Link href="/pricing" style={{ fontSize: 13, color: "var(--text-3)", textDecoration: "none" }} onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "var(--text-1)")} onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "var(--text-3)")}>
+            See all plans →
+          </Link>
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 16 }}>Or wait until tomorrow — limit resets at midnight.</p>
+      </div>
+    </div>
+  );
+}
 
 const ConstellationCanvas = dynamic(() => import("@/components/ConstellationCanvas"), { ssr: false });
 
@@ -95,7 +128,7 @@ function MsgActions({ content, onRegen, isLast }: MsgActionsProps) {
 // ── Inline Auth Panel ──────────────────────────────────────────────────────────
 interface AuthPanelProps {
   mode: "login"|"signup";
-  onSuccess: (role: string, username: string) => void;
+  onSuccess: (role: string, username: string, plan?: string) => void;
   onSwitch: (m: "login"|"signup") => void;
   onClose: () => void;
 }
@@ -117,8 +150,8 @@ function AuthPanel({ mode, onSuccess, onSwitch, onClose }: AuthPanelProps) {
       let res;
       if (mode === "signup") res = await authApi.signup(username, email, password);
       else res = await authApi.login(username, password);
-      setToken(res.access_token, res.role, res.username);
-      onSuccess(res.role, res.username);
+      setToken(res.access_token, res.role, res.username, res.plan || "free");
+      onSuccess(res.role, res.username, res.plan || "free");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally { setLoading(false); }
@@ -195,6 +228,8 @@ export default function Page() {
   const [isAuth, setIsAuth]       = useState(false);
   const [role, setRole]           = useState<UserRole>("guest");
   const [username, setUsername]   = useState("");
+  const [isPro, setIsPro]         = useState(false);
+  const [showUpgrade, setUpgrade] = useState(false);
   const [authPanel, setAuthPanel] = useState<"login"|"signup"|null>(null);
   const [messages, setMessages]   = useState<Message[]>([WELCOME]);
   const [input, setInput]         = useState("");
@@ -216,6 +251,7 @@ export default function Page() {
       const r = getStoredRole() as UserRole;
       const u = getStoredUsername();
       setIsAuth(true); setRole(r); setUsername(u);
+      setIsPro(getIsPro());
       setMessages([welcome(r)]);
       setSidebar(true);
       authApi.me().catch(() => { setIsAuth(false); setRole("guest"); setSidebar(false); });
@@ -244,9 +280,14 @@ export default function Page() {
       if (isAuth) refreshConvs();
     } catch (e: unknown) {
       const err = e instanceof Error ? e.message : "Something went wrong";
-      setMessages(p => p.map(m => m.id === "pending"
-        ? { id: "err", role: "assistant", content: err.includes("limit") ? "Daily limit reached. Sign in or try tomorrow." : `Error: ${err}` }
-        : m));
+      if (err.includes("limit") || err.includes("429")) {
+        setMessages(p => p.filter(m => m.id !== "pending"));
+        setUpgrade(true);
+      } else {
+        setMessages(p => p.map(m => m.id === "pending"
+          ? { id: "err", role: "assistant", content: `Error: ${err}` }
+          : m));
+      }
     } finally { setLoading(false); setTimeout(() => taRef.current?.focus(), 50); }
   };
 
@@ -285,8 +326,9 @@ export default function Page() {
     if (activeId === id) newChat();
   };
 
-  const onAuthSuccess = (r: string, u: string) => {
+  const onAuthSuccess = (r: string, u: string, plan = "free") => {
     setIsAuth(true); setRole(r as UserRole); setUsername(u);
+    setIsPro(plan === "pro" || r === "admin" || r === "creator");
     setMessages([welcome(r as UserRole)]);
     setAuthPanel(null); setSidebar(true);
     chatApi.getConversations().then(setConvs).catch(() => {});
@@ -352,6 +394,20 @@ export default function Page() {
                 <Crown size={10} style={{ color: "var(--gold)" }} />
                 <span style={{ fontSize: 11, color: "var(--gold)", fontWeight: 500 }}>Creator access</span>
               </div>
+            )}
+            {isPro && role !== "creator" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: "var(--gold-dim)", borderRadius: "var(--radius-sm)", marginBottom: 4 }}>
+                <Zap size={10} style={{ color: "var(--gold)" }} />
+                <span style={{ fontSize: 11, color: "var(--gold)", fontWeight: 500 }}>Pro plan</span>
+              </div>
+            )}
+            {!isPro && isAuth && (
+              <Link href="/pricing" style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: "var(--radius-sm)", color: "var(--text-3)", fontSize: 12, textDecoration: "none", marginBottom: 4, border: "1px solid var(--border)", transition: "all 0.15s" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(201,162,39,0.25)"; (e.currentTarget as HTMLElement).style.color = "var(--gold)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLElement).style.color = "var(--text-3)"; }}
+              >
+                <Zap size={10} /> Upgrade to Pro
+              </Link>
             )}
             <div style={{ padding: "2px 10px", fontSize: 12, color: "var(--text-3)" }}>{username}</div>
             {(role === "admin" || role === "creator") && (
@@ -487,6 +543,8 @@ export default function Page() {
       {authPanel && !isAuth && (
         <AuthPanel mode={authPanel} onSuccess={onAuthSuccess} onSwitch={setAuthPanel} onClose={() => setAuthPanel(null)} />
       )}
+
+      {showUpgrade && <UpgradeWall onClose={() => setUpgrade(false)} />}
 
       <style>{`
         @keyframes dot { 0%,80%,100%{transform:translateY(0);opacity:.35} 40%{transform:translateY(-4px);opacity:1} }
