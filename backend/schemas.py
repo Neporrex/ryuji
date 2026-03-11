@@ -1,13 +1,11 @@
 """
-Pydantic schemas for request/response validation
+Pydantic schemas
 """
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime
-from models import UserRole
+from models import UserRole, UserPlan
 
-
-# ── Auth ─────────────────────────────────────────────────────────────────────
 
 class SignupRequest(BaseModel):
     username: str
@@ -42,6 +40,8 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: str
     username: str
+    plan: str = "free"
+    is_pro: bool = False
 
 
 class UserResponse(BaseModel):
@@ -49,18 +49,13 @@ class UserResponse(BaseModel):
     username: str
     email: str
     role: UserRole
+    plan: UserPlan
+    is_pro: bool
     is_active: bool
     created_at: datetime
 
     class Config:
         from_attributes = True
-
-
-# ── Chat ─────────────────────────────────────────────────────────────────────
-
-class ChatMessage(BaseModel):
-    role: str   # "user" or "assistant"
-    content: str
 
 
 class ChatRequest(BaseModel):
@@ -72,6 +67,7 @@ class ChatResponse(BaseModel):
     reply: str
     conversation_id: str
     message_id: str
+    remaining_messages: Optional[int] = None
 
 
 class ConversationResponse(BaseModel):
@@ -95,13 +91,12 @@ class MessageResponse(BaseModel):
         from_attributes = True
 
 
-# ── Admin ────────────────────────────────────────────────────────────────────
-
 class AdminUserResponse(BaseModel):
     id: str
     username: str
     email: str
     role: UserRole
+    plan: UserPlan
     is_active: bool
     is_banned: bool
     daily_message_count: int
@@ -127,9 +122,8 @@ class StatsResponse(BaseModel):
     total_conversations: int
     total_messages: int
     banned_users: int
+    pro_users: int
 
-
-# ── Settings ─────────────────────────────────────────────────────────────────
 
 class SettingUpdate(BaseModel):
     key: str
