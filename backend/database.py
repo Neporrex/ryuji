@@ -1,3 +1,6 @@
+"""
+Database connection and session management
+"""
 import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -25,40 +28,47 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def create_tables():
-    """Create all tables if they don't exist, then run migrations."""
     Base.metadata.create_all(bind=engine)
     _run_migrations()
 
 
 def _run_migrations():
-    """Add new columns to existing tables if they don't exist."""
     is_sqlite = "sqlite" in DATABASE_URL
 
-    migrations = [
-        ("users", "plan",                   "VARCHAR(10) DEFAULT 'free'"),
-        ("users", "stripe_customer_id",     "VARCHAR(255)"),
-        ("users", "stripe_subscription_id", "VARCHAR(255)"),
-        ("users", "plan_expires_at",        "TIMESTAMP"),
-    ]
-
     with engine.connect() as conn:
-        for table, column, col_type in migrations:
+        # Add missing columns
+        for col, typ in [
+            ("stripe_customer_id",     "VARCHAR(255)"),
+            ("stripe_subscription_id", "VARCHAR(255)"),
+            ("plan_expires_at",        "TIMESTAMP"),
+        ]:
             try:
                 if is_sqlite:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {typ}"))
                 else:
-                    conn.execute(text(
-                        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}"
-                    ))
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {typ}"))
                 conn.commit()
-                print(f"Migration: added {table}.{column}")
             except Exception:
                 conn.rollback()
-                pass  # Column already exists
+
+        # Fix plan column: convert enum -> varchar so 'free'/'pro' work
+        if not is_sqlite:
+            try:
+                conn.execute(text("ALTER TABLE users ALTER COLUMN plan TYPE VARCHAR(10) USING plan::text"))
+                conn.execute(text("UPDATE users SET plan = 'free' WHERE plan IS NULL OR plan NOT IN ('free','pro')"))
+                conn.commit()
+                print("Migration: plan column fixed")
+            except Exception as e:
+                conn.rollback()
+                print(f"Plan migration: {e}")
+            try:
+                conn.execute(text("DROP TYPE IF EXISTS userplan"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
 
 def get_db():
-    """Dependency for FastAPI routes."""
     db = SessionLocal()
     try:
         yield db
