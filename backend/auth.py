@@ -1,6 +1,3 @@
-"""
-Authentication: JWT, password hashing, role middleware
-"""
 import os
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -20,15 +17,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1008
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# ── Password ──────────────────────────────────────────────────────────────────
-
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
-
-# ── JWT ───────────────────────────────────────────────────────────────────────
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
@@ -38,8 +31,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-
-# ── Dependencies ──────────────────────────────────────────────────────────────
 
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
@@ -77,12 +68,9 @@ def require_creator(user: User = Depends(require_auth)) -> User:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Creator access required")
     return user
 
-# ── Rate limits ───────────────────────────────────────────────────────────────
-
 DAILY_LIMITS = {
-    "guest":   10,
-    "free":    20,    # free registered users
-    "pro":     99999, # unlimited
+    "free":    20,
+    "pro":     99999,
     "admin":   99999,
     "creator": 99999,
 }
@@ -104,3 +92,23 @@ def check_and_increment_message_count(user: User, db: Session) -> bool:
     user.daily_message_count += 1
     db.commit()
     return True
+```
+
+---
+
+**`backend/requirements.txt`**
+```
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
+alembic==1.13.1
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.3
+python-multipart==0.0.9
+groq==0.9.0
+python-dotenv==1.0.1
+httpx==0.27.0
+pydantic[email]==2.7.1
+slowapi==0.1.9
+stripe==8.9.0
